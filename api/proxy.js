@@ -1,34 +1,48 @@
-const TARGET_URL = process.env.TARGET_URL;
+const express = require('express');
+const fetch = require('node-fetch'); // 🔵 fetch proxy call
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Pouze POST metoda je podporována' });
-  }
+app.use(express.json());
 
-  if (!TARGET_URL) {
-    return res.status(500).json({ error: 'Proxy není správně nakonfigurována. Chybí TARGET_URL.' });
-  }
+// ✅ Root kontrola dostupnosti
+app.get('/', (req, res) => {
+  res.status(200).json({ message: 'GPT Proxy běží správně 🚀' });
+});
 
+// 🔵 Proxy přeposílá na /create-event z TARGET_URL
+app.post('/proxy/create-event', async (req, res) => {
   try {
-    // 🟡⬇️ PŘESMĚROVÁNÍ NA BACKENDOVÝ ENDPOINT (Z ENV PROMĚNNÉ)
-    const response = await fetch(`${TARGET_URL}/create-event`, {
+    const target = process.env.TARGET_URL || 'https://createcalendarevent-558541143249.europe-central2.run.app';
+
+    const response = await fetch(`${target}/create-event`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify(req.body)
     });
-    // 🟡⬆️
 
-    const text = await response.text();
+    const raw = await response.text();
 
     try {
-      const json = JSON.parse(text);
-      return res.status(response.status).json(json);
-    } catch {
-      return res.status(response.status).send(text);
+      const data = JSON.parse(raw);
+      return res.status(response.status).json(data);
+    } catch (e) {
+      return res.status(500).json({
+        error: 'Proxy selhala – neplatný JSON z backendu',
+        rawResponse: raw
+      });
     }
 
-  } catch (err) {
-    console.error('Chyba proxy:', err);
-    return res.status(500).json({ error: 'Chyba proxy', detail: err.message });
+  } catch (error) {
+    return res.status(500).json({
+      error: 'Proxy výjimka',
+      detail: error.message
+    });
   }
-}
+});
+
+app.listen(PORT, () => {
+  console.log(`Proxy běží na portu ${PORT}`);
+});
